@@ -146,7 +146,8 @@ main.add_command(changes)
 
 
 @click.command()
-def activity():
+@click.option('--author', type=unicode, help='Include commits only by given author.')
+def activity(author=None):
     wdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
     weeks = range(52)
 
@@ -154,6 +155,9 @@ def activity():
 
     since = datetime.date.today().replace(month=1, day=1)
     args = ['git log --no-merges --pretty=format:"%at" --since="{}"'.format(since)]
+
+    if author is not None:
+        args[0] += ' --author="{}"'.format(author)
 
     sub = subprocess.Popen(args, stdout=subprocess.PIPE, shell=True)
 
@@ -173,10 +177,9 @@ def activity():
 
         values[weekday][week] += value
 
-
     fig, ax = plt.subplots()
     plt.axis('equal')
-    heatmap = ax.pcolor(values, cmap=plt.cm.YlGn)
+    ax.pcolor(values, cmap=plt.cm.YlGn)
 
     ax.set_frame_on(False)
     # put the major ticks at the middle of each cell

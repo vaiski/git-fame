@@ -5,6 +5,7 @@ import click
 import re
 import subprocess
 import datetime
+import numpy as np
 from matplotlib import pyplot as plt
 from pprint import pprint
 
@@ -32,6 +33,8 @@ COLORS = [
     rgb(198, 0, 60),
     rgb(230, 54, 0),
 ]
+
+COLORS = plt.cm.YlGn(np.arange(5)/5.)
 
 
 @click.command()
@@ -65,6 +68,7 @@ def commits(since=None, until=None):
     plt.axis("equal")
     plt.title(title)
     plt.pie(values, labels=labels, colors=COLORS, autopct='%1.1f%%', labeldistance=1.1)
+
     plt.savefig('commits.pdf', bbox_inches='tight')
 
 main.add_command(commits)
@@ -120,6 +124,8 @@ def changes(since=None, until=None):
                     data[author]['total'] += int(numbers[1]) + int(numbers[2])
 
     values = [d['total'] for _, d in data.iteritems()]
+    deletes = [-1*d['deletes'] for _, d in data.iteritems()]
+    inserts = [d['inserts'] for _, d in data.iteritems()]
     labels = [l.split()[0] for l in data.keys()]
 
     plt.axis("equal")
@@ -127,4 +133,69 @@ def changes(since=None, until=None):
     plt.pie(values, labels=labels, colors=COLORS, autopct='%1.1f%%', labeldistance=1.1)
     plt.savefig('changes.pdf', bbox_inches='tight')
 
+    plt.axis("tight")
+    fig = plt.figure()
+    ax = plt.subplot(111)
+    ticks = range(len(labels))
+    ax.bar(ticks, deletes, width=1, color='crimson')
+    ax.bar(ticks, inserts, width=1, color='darkblue')
+    plt.xticks([t+0.5 for t in ticks], labels)
+    fig.savefig('changes_bar.pdf', bbox_inches='tight')
+
 main.add_command(changes)
+
+
+@click.command()
+def activity():
+    wdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    weeks = range(52)
+
+    data = {}
+
+    since = datetime.date.today().replace(month=1, day=1)
+    args = ['git log --no-merges --pretty=format:"%at" --since="{}"'.format(since)]
+
+    sub = subprocess.Popen(args, stdout=subprocess.PIPE, shell=True)
+
+    for line in sub.stdout:
+        timestamp = line.strip('\n')
+        # date = datetime.date.fromtimestamp(int(timestamp))
+        if timestamp not in data:
+            data[timestamp] = 0
+        data[timestamp] += 1
+
+    values = np.zeros([len(wdays), len(weeks)])
+
+    for timestamp, value in data.iteritems():
+        date = datetime.date.fromtimestamp(int(timestamp)).isocalendar()
+        weekday = date[2] - 1
+        week = date[1] - 1
+
+        values[weekday][week] += value
+
+
+    fig, ax = plt.subplots()
+    plt.axis('equal')
+    heatmap = ax.pcolor(values, cmap=plt.cm.YlGn)
+
+    ax.set_frame_on(False)
+    # put the major ticks at the middle of each cell
+    ax.set_xticks(np.arange(values.shape[1])+0.5, minor=False)
+    ax.set_yticks(np.arange(values.shape[0])+0.5, minor=False)
+
+    # want a more natural, table-like display
+    ax.invert_yaxis()
+    ax.xaxis.tick_top()
+    ax.grid(False)
+
+    ax.set_xticklabels(weeks, minor=False)
+    ax.set_yticklabels(wdays, minor=False)
+    for i, label in enumerate(ax.xaxis.get_ticklabels()):
+        if i % 5 == 0:
+            label.set_visible(True)
+        else:
+            label.set_visible(False)
+
+    plt.savefig('activity.pdf')
+
+main.add_command(activity)

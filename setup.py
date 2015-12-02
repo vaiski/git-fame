@@ -7,6 +7,7 @@ VERSION = '0.1.0'
 PACKAGE_DEPS = [
     'click',
     'matplotlib',
+    'numpy',
 ]
 
 setup(

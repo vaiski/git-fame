@@ -7,7 +7,7 @@ import subprocess
 import datetime
 import numpy as np
 from matplotlib import pyplot as plt
-from pprint import pprint
+from .charts import heatmap, changebars, pie
 
 
 @click.group()
@@ -19,57 +19,53 @@ def rgb(r, g, b):
     D = 256.0
     return (r/D, g/D, b/D)
 
-COLORS = [
-    rgb(241, 106, 0),
-    rgb(221,  142, 2),
-    rgb(250, 245, 51),
-    rgb(155, 227, 25),
-    rgb(71, 182, 59),
-    rgb(35, 133, 133),
-    rgb(18, 79, 213),
-    rgb(61, 54, 143),
-    rgb(71, 28, 97),
-    rgb(116, 28, 84),
-    rgb(198, 0, 60),
-    rgb(230, 54, 0),
-]
 
-COLORS = plt.cm.YlGn(np.arange(5)/5.)
+def git_log(*args, **kwargs):
+    cmd = ['git', kwargs.get('logcmd', 'log')]
+
+    if 'logcmd' in kwargs:
+        del kwargs['logcmd']
+
+    for arg in args:
+        cmd.append("-{}".format(arg))
+
+    for key, value in kwargs.iteritems():
+        if value is not None:
+            cmd.append('--{}="{}"'.format(key, value))
+
+    sub = subprocess.Popen([' '.join(cmd)], stdout=subprocess.PIPE, shell=True)
+    return sub.stdout
+
+
+def time_title(title, since=None, until=None, **kwargs):
+    if since is not None:
+        title = title + " From " + since
+
+    if until is not None:
+        title = title + " Until " + until
+    else:
+        title = title + " Until " + datetime.date.today().isoformat()
+
+    return title
 
 
 @click.command()
 @click.option('--since', type=unicode)
 @click.option('--until', type=unicode)
-def commits(since=None, until=None):
-    title = "Commits by Author"
-    args = ['git', 'shortlog', '-sn']
-
-    if since is not None:
-        args.append('--since=' + since)
-        title = title + " From " + since
-
-    if until is not None:
-        args.append('--until=' + until)
-        title = title + " Until " + until
-    else:
-        title = title + " Until " + datetime.date.today().isoformat()
-
-    sub = subprocess.Popen(args, stdout=subprocess.PIPE, close_fds=True)
-
+def commits(**kwargs):
+    title = time_title("Commits by Author", **kwargs)
     labels = []
     values = []
-    # colors = ['yellowgreen', 'gold', 'lightskyblue', 'lightcoral']
 
-    for line in sub.stdout:
+    output = git_log('sn', logcmd='shortlog', **kwargs)
+
+    for line in output:
         commits, name = [term.strip() for term in line.split('\t')]
         labels.append(name.split()[0])
         values.append(commits)
 
-    plt.axis("equal")
-    plt.title(title)
-    plt.pie(values, labels=labels, colors=COLORS, autopct='%1.1f%%', labeldistance=1.1)
-
-    plt.savefig('commits.pdf', bbox_inches='tight')
+    pie(labels, values, title=title)
+    plt.savefig('commits.png', bbox_inches='tight')
 
 main.add_command(commits)
 
@@ -77,25 +73,16 @@ main.add_command(commits)
 @click.command()
 @click.option('--since', type=unicode)
 @click.option('--until', type=unicode)
-def changes(since=None, until=None):
-    title = "Changes by Author"
-    args = ['git log --no-merges --shortstat --pretty=format:"%at %aN"']
+def changes(**kwargs):
+    title = time_title("Changes by Author", **kwargs)
 
-    if since is not None:
-        args[0] += ' --since="' + since + '"'
-        title = title + " From " + since
+    kwargs.update({'pretty': 'format:%at %aN'})
+    output = git_log('-no-merges', '-shortstat', **kwargs)
 
-    if until is not None:
-        args[0] += ' --until="' + until + '"'
-        title = title + " Until " + until
-    else:
-        title = title + " Until " + datetime.date.today().isoformat()
-
-    sub = subprocess.Popen(args, stdout=subprocess.PIPE, shell=True)
     data = {}
     author = ''
 
-    for line in sub.stdout:
+    for line in output:
         line = line.rstrip('\n')
         if len(line) > 0:
             if re.search('files? changed', line) is None:
@@ -128,42 +115,30 @@ def changes(since=None, until=None):
     inserts = [d['inserts'] for _, d in data.iteritems()]
     labels = [l.split()[0] for l in data.keys()]
 
-    plt.axis("equal")
-    plt.title(title)
-    plt.pie(values, labels=labels, colors=COLORS, autopct='%1.1f%%', labeldistance=1.1)
-    plt.savefig('changes.pdf', bbox_inches='tight')
+    pie(labels, values, title=title)
+    plt.savefig('changes.png', bbox_inches='tight')
 
-    plt.axis("tight")
-    fig = plt.figure()
-    ax = plt.subplot(111)
-    ticks = range(len(labels))
-    ax.bar(ticks, deletes, width=1, color='crimson')
-    ax.bar(ticks, inserts, width=1, color='darkblue')
-    plt.xticks([t+0.5 for t in ticks], labels)
-    fig.savefig('changes_bar.pdf', bbox_inches='tight')
+    changebars(labels, inserts, deletes)
+    plt.savefig('changes_bar.png', bbox_inches='tight')
 
 main.add_command(changes)
 
 
 @click.command()
 @click.option('--author', type=unicode, help='Include commits only by given author.')
-def activity(author=None):
+def activity(**kwargs):
     wdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
     weeks = range(52)
-
     data = {}
 
-    since = datetime.date.today().replace(month=1, day=1)
-    args = ['git log --no-merges --pretty=format:"%at" --since="{}"'.format(since)]
+    kwargs.update({
+        'pretty': 'format:%at',
+        'since': datetime.date.today().replace(month=1, day=1)
+    })
+    output = git_log('-no-merges', **kwargs)
 
-    if author is not None:
-        args[0] += ' --author="{}"'.format(author)
-
-    sub = subprocess.Popen(args, stdout=subprocess.PIPE, shell=True)
-
-    for line in sub.stdout:
+    for line in output:
         timestamp = line.strip('\n')
-        # date = datetime.date.fromtimestamp(int(timestamp))
         if timestamp not in data:
             data[timestamp] = 0
         data[timestamp] += 1
@@ -177,28 +152,7 @@ def activity(author=None):
 
         values[weekday][week] += value
 
-    fig, ax = plt.subplots()
-    plt.axis('equal')
-    ax.pcolor(values, cmap=plt.cm.YlGn)
-
-    ax.set_frame_on(False)
-    # put the major ticks at the middle of each cell
-    ax.set_xticks(np.arange(values.shape[1])+0.5, minor=False)
-    ax.set_yticks(np.arange(values.shape[0])+0.5, minor=False)
-
-    # want a more natural, table-like display
-    ax.invert_yaxis()
-    ax.xaxis.tick_top()
-    ax.grid(False)
-
-    ax.set_xticklabels(weeks, minor=False)
-    ax.set_yticklabels(wdays, minor=False)
-    for i, label in enumerate(ax.xaxis.get_ticklabels()):
-        if i % 5 == 0:
-            label.set_visible(True)
-        else:
-            label.set_visible(False)
-
-    plt.savefig('activity.pdf')
+    heatmap(values, weeks, wdays)
+    plt.savefig('activity.png', bbox_inches='tight')
 
 main.add_command(activity)

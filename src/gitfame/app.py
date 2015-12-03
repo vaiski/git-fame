@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
 
 import click
-
 import re
-import subprocess
 import datetime
 import numpy as np
 from matplotlib import pyplot as plt
+from .utils import git_log, time_title
 from .charts import heatmap, changebars, pie
 
 
@@ -15,44 +14,13 @@ def main():
     pass
 
 
-def rgb(r, g, b):
-    D = 256.0
-    return (r/D, g/D, b/D)
-
-
-def git_log(*args, **kwargs):
-    cmd = ['git', kwargs.get('logcmd', 'log')]
-
-    if 'logcmd' in kwargs:
-        del kwargs['logcmd']
-
-    for arg in args:
-        cmd.append("-{}".format(arg))
-
-    for key, value in kwargs.iteritems():
-        if value is not None:
-            cmd.append('--{}="{}"'.format(key, value))
-
-    sub = subprocess.Popen([' '.join(cmd)], stdout=subprocess.PIPE, shell=True)
-    return sub.stdout
-
-
-def time_title(title, since=None, until=None, **kwargs):
-    if since is not None:
-        title = title + " From " + since
-
-    if until is not None:
-        title = title + " Until " + until
-    else:
-        title = title + " Until " + datetime.date.today().isoformat()
-
-    return title
-
-
 @click.command()
 @click.option('--since', type=unicode)
 @click.option('--until', type=unicode)
 def commits(**kwargs):
+    '''
+    Create a pie chart on commits by author.
+    '''
     title = time_title("Commits by Author", **kwargs)
     labels = []
     values = []
@@ -74,6 +42,10 @@ main.add_command(commits)
 @click.option('--since', type=unicode)
 @click.option('--until', type=unicode)
 def changes(**kwargs):
+    '''
+    Create a pie chart on total changes and a bar chart on insertions and
+    deletions by author.
+    '''
     title = time_title("Changes by Author", **kwargs)
 
     kwargs.update({'pretty': 'format:%at %aN'})
@@ -127,6 +99,9 @@ main.add_command(changes)
 @click.command()
 @click.option('--author', type=unicode, help='Include commits only by given author.')
 def activity(**kwargs):
+    '''
+    Generate a heatmap on repository activity.
+    '''
     wdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
     weeks = range(52)
     data = {}

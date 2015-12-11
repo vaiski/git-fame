@@ -9,7 +9,8 @@ COLORS = plt.cm.YlGn(np.arange(5)/5.)
 def heatmap(values, xlabels, ylabels, size=(12, 1.35)):
     fig, ax = plt.subplots()
     plt.axis('equal')
-    ax.pcolormesh(values, cmap=plt.cm.YlGn)
+    heatmap = ax.pcolormesh(values, cmap=plt.cm.YlGn)
+    plt.colorbar(heatmap, ticks=range(int(values.max().round())+1))
     fig.set_size_inches(*size)
 
     ax.set_frame_on(False)

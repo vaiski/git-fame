@@ -97,6 +97,56 @@ main.add_command(changes)
 
 
 @click.command()
+@click.option('--since', type=unicode)
+@click.option('--until', type=unicode)
+@click.option('--author', type=unicode)
+def insdel(**kwargs):
+    title = time_title("Changes by Author", **kwargs)
+
+    kwargs.update({'pretty': 'format:%at %aN'})
+    output = git_log('-no-merges', '-shortstat', **kwargs)
+
+    inserts = {}
+    deletes = {}
+    timestamp = ''
+
+    for line in output:
+        line = line.rstrip('\n')
+        if len(line) > 0:
+            if re.search('files? changed', line) is None:
+                sep = line.find(' ')
+                timestamp = line[:sep]
+
+                if timestamp not in inserts.keys():
+                    inserts[timestamp] = 0
+
+                if timestamp not in deletes.keys():
+                    deletes[timestamp] = 0
+            else:
+                numbers = re.findall('\d+', line)
+
+                if len(numbers) == 2:
+                    if line.find('(+)') != -1:
+                        inserts[timestamp] += int(numbers[1])
+                    elif line.find('(-)') != -1:
+                        deletes[timestamp] += int(numbers[1])
+                else:
+                    inserts[timestamp] += int(numbers[1])
+                    deletes[timestamp] += int(numbers[2])
+
+    fig, ax = plt.subplots()
+    insertvalues = [val for _, val in inserts.iteritems()]
+    deletevalues = [-1*val for _, val in deletes.iteritems()]
+    ax.plot(insertvalues, color='darkblue')
+    ax.fill_between(range(len(insertvalues)), 0, insertvalues, facecolor='darkblue')
+    ax.plot(deletevalues, color='crimson')
+    ax.fill_between(range(len(deletevalues)), 0, deletevalues, facecolor='crimson')
+    plt.savefig('insdel.pdf', bbox_inches='tight')
+
+main.add_command(insdel)
+
+
+@click.command()
 @click.option('--author', type=unicode, help='Include commits only by given author.')
 def activity(**kwargs):
     '''

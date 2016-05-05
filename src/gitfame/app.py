@@ -4,9 +4,12 @@ import click
 import re
 import datetime
 import numpy as np
+from pprint import pprint
 from matplotlib import pyplot as plt
+from matplotlib.dates import DateFormatter, MonthLocator
 from .utils import git_log, time_title
 from .charts import heatmap, changebars, pie
+from .gitstats import changecount, commitcount
 
 
 @click.group()
@@ -25,14 +28,9 @@ def commits(**kwargs):
     labels = []
     values = []
 
-    output = git_log('sn', logcmd='shortlog', **kwargs)
+    data = commitcount(**kwargs)
 
-    for line in output:
-        commits, name = [term.strip() for term in line.split('\t')]
-        labels.append(name.split()[0])
-        values.append(commits)
-
-    pie(labels, values, title=title)
+    pie(data.author, data.commits, title=title)
     plt.savefig('commits.png', bbox_inches='tight')
 
 main.add_command(commits)
@@ -97,6 +95,89 @@ main.add_command(changes)
 
 
 @click.command()
+@click.option('--since', type=unicode)
+@click.option('--until', type=unicode)
+@click.option('--author', type=unicode)
+def insdel(**kwargs):
+    title = time_title("Changes by Author", **kwargs)
+
+    kwargs.update({'pretty': 'format:%at %aN'})
+    output = git_log('-no-merges', '-shortstat', **kwargs)
+
+
+    data = {}
+    timestamp = ''
+
+    for line in output:
+        line = line.rstrip('\n')
+        if len(line) > 0:
+            if re.search('files? changed', line) is None:
+                sep = line.find(' ')
+                timestamp = ts2days(int(line[:sep]))
+
+                if timestamp not in data.keys():
+                    data[timestamp] = {
+                        'inserts': 0,
+                        'deletes': 0
+                    }
+
+            else:
+                numbers = re.findall('\d+', line)
+
+                if len(numbers) == 2:
+                    if line.find('(+)') != -1:
+                        data[timestamp]['inserts'] += int(numbers[1])
+                    elif line.find('(-)') != -1:
+                        data[timestamp]['deletes'] += int(numbers[1])
+                else:
+                    data[timestamp]['inserts'] += int(numbers[1])
+                    data[timestamp]['deletes'] += int(numbers[2])
+
+    fig, ax = plt.subplots()
+
+    dates = data.keys()
+    dates.sort()
+    inserts = []
+    deletes = []
+    for key in dates:
+        inserts.append(data[key]['inserts'])
+        deletes.append(-1*data[key]['deletes'])
+
+    months = MonthLocator()
+    date_fmt = DateFormatter('%m-%Y')
+
+    ax.fill_between(dates, 0, inserts, color='darkblue', facecolor='darkblue', linewidth=0.1)
+    ax.fill_between(dates, 0, deletes, color='crimson', facecolor='crimson', linewidth=0.1)
+    ax.xaxis.set_major_locator(months)
+    ax.xaxis.set_major_formatter(date_fmt)
+    ax.autoscale_view()
+    plt.savefig('insdel.pdf', bbox_inches='tight')
+
+main.add_command(insdel)
+
+
+@click.command()
+@click.option('--since', type=unicode)
+@click.option('--until', type=unicode)
+def comsize(**kwargs):
+    title = 'Average commit size by author'
+    data = changecount(**kwargs).groupby('author').changes.mean()
+
+    fig, ax = plt.subplots()
+
+    pie(data.keys().values, data.values, title=title)
+    plt.savefig('commit_sizes.png', bbox_inches='tight')
+
+main.add_command(comsize)
+
+def ts2days(timestamp):
+    day_one = datetime.date(1, 1, 1)
+    day = datetime.datetime.fromtimestamp(timestamp).date()
+    delta = day - day_one
+    return delta.days
+
+
+@click.command()
 @click.option('--author', type=unicode, help='Include commits only by given author.')
 def activity(**kwargs):
     '''
@@ -131,3 +212,18 @@ def activity(**kwargs):
     plt.savefig('activity.png', bbox_inches='tight')
 
 main.add_command(activity)
+
+
+@click.command()
+@click.option('--author', type=unicode, help='Include commits only by given author.')
+def today(**kwargs):
+    kwargs.update({
+        'since': datetime.datetime.now().replace(hour=0, minute=0, second=0)
+    })
+    output = git_log('-no-merges', '-oneline', **kwargs)
+
+    for line in output:
+        sep = line.find(' ')
+        print ' *', line[sep+1:].strip('\n')
+
+main.add_command(today)
